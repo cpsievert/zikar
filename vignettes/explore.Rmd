@@ -1,0 +1,95 @@
+---
+title: "Exploring Zika Data"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+if (!file.exists("zikaDat.rds")) {
+  rmarkdown::render("01-clean-combine.Rmd")
+}
+zika <- readRDS("zikaDat.rds")
+if (!file.exists("latLonDat.rds")) {
+  source("geolocate.R")
+}
+latLonDat <- readRDS("latLonDat.rds")
+```
+
+# Map
+
+```{r}
+library(leaflet)
+leaflet(latLonDat) %>% addTiles() %>% addCircleMarkers(
+    lng = ~lng, lat = ~lat, label = ~location,
+    clusterOptions = markerClusterOptions()
+)
+```
+
+```{r, eval = FALSE}
+library(dplyr)
+library(plotly)
+library(crosstalk)
+
+# ggplot2 version
+ggplot_values <- function(cntry = "United_States", type = "state") {
+  d <- zika %>%
+    filter(country %in% cntry) %>%
+    filter(location_type %in% type) %>%
+    SharedData$new(~location)
+  p <- ggplot(d, aes(report_date, value, color = data_field, text = location)) +
+    geom_line(alpha = 0.5) +
+    scale_x_date(date_breaks = "1 month", date_labels = "%B") +
+    facet_wrap(~location_type, ncol = 1, scales = "free_y") +
+    labs(x = NULL, y = "Number of Cases Reported")
+  crosstalk(ggplotly(p, crosstalkOpts = o), "plotly_hover", "plotly_doubleclick")
+}
+ggplot_values(type = c("state", "territory"))
+
+plot_values <- function(cntry = "United_States", type = "state") {
+  d <- zika %>%
+    filter(country %in% cntry) %>%
+    filter(location_type %in% type)
+  dats <- split(d, d$location_type)
+  plots <- lapply(dats, function(x) {
+    SharedData$new(x, ~location) %>%
+      plot_ly(x = ~report_date, y = ~value, text = ~location) %>%
+      add_lines(color = ~data_field, alpha = 0.3) %>%
+      layout(
+        title = paste0("Location type: ", unique(x$location_type)),
+        xaxis = list(title = ""),
+        yaxis = list(title = "")
+      )
+  })
+  subplot(plots, nrows = length(plots), shareX = TRUE) %>%
+    crosstalk("plotly_hover", "plotly_doubleclick")
+}
+plot_values(type = c("state", "territory"))
+plot_values("Brazil", "state")
+
+latLonDat %>%
+  filter(location %in% unique(zika$country))
+
+d <- fuzzyjoin::stringdist_left_join(zika, latLonDat, by = "location")
+
+us <- zika %>%
+  filter(country == "United_States") %>%
+  filter(location_type != "county")
+
+plot_ly(us, x = ~report_date, y = ~value) %>%
+  group_by(location) %>%
+  add_lines(color = ~data_field, alpha = 0.3)
+
+
+# TODO:
+# (1) automatically add crosstalk key to hoverinfo
+
+
+
+
+
+
+#p <- ggplot(zika, aes(value, color = country)) +
+#  facet_wrap()
+#  geom_boxplot() + coord_flip()
+
+
+```

@@ -1,0 +1,241 @@
+---
+title: "Acquiring and cleaning zika data"
+author: "Carson Sievert"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include = FALSE}
+knitr::opts_chunk$set(
+  message = FALSE,
+  fig.width = 10,
+  fig.height = 4,
+  comment = "#>",
+  collapse = TRUE,
+  warning = FALSE
+)
+```
+
+## Acquire the zika GitHub repo
+
+```{r}
+library(git2r)
+# clone the zika repo if we don't already have it
+zikaRepo <- if (!dir.exists("zika")) {
+  clone("https://github.com/cdcepi/zika.git", local_path = "zika")
+} else {
+  repository("zika")
+}
+zikaRepo
+```
+
+## Read in the most recent data
+
+```{r}
+library(readr)
+library(dplyr)
+dataFiles <- Sys.glob("zika/*/*/data/*.csv")
+countries <- unlist(lapply(strsplit(dataFiles, "/"), "[[", 1))
+dats <- lapply(dataFiles, function(x) read_csv(x))
+```
+
+## Fix some inconsistencies
+
+```{r}
+# Panama dates are reported as M/D/Y
+idx <- grep("^Panama", dataFiles)
+dats[idx] <- lapply(dats[idx], function(x) {
+  x$report_date <- lubridate::mdy(x$report_date)
+  x
+})
+
+# someone put values as "x*y", lol
+is_character <- function(x) typeof(x$value) == "character"
+badValues <- which(vapply(dats, is_character, logical(1)))
+dats <- lapply(dats, function(x) {
+  x$value  <- as.character(x$value)
+  x
+})
+
+# fix some inconsistent naming (these columns are missing anyway)
+nms <- names(dats[[252]])
+nms <- sub("time_period_year", "time_period", nms, fixed = TRUE)
+nms <- sub("time_period_week", "time_period_type", nms, fixed = TRUE)
+names(dats[[252]]) <- nms
+
+# put everything in one big data frame
+zika <- bind_rows(dats)
+
+# fix the "unevaluated" multiplication
+idx <- grep("\\*", zika$value)
+zika$value[idx] <- lapply(
+  strsplit(zika$value[idx], "\\*"),
+  function(x) prod(as.numeric(x))
+)
+zika$value <- as.numeric(zika$value)
+```
+
+## Janitorial work
+
+```{r}
+# hmmm, these variables seem useless, remove them
+summary(is.na(zika$time_period))
+summary(is.na(zika$time_period_type))
+zika <- zika[!grepl("time_period*", names(zika))]
+
+# all municipailities units come from Brazil -- save them in a separate data file
+municipalities <- filter(zika, unit == "municipalities")
+zika <- filter(zika, unit == "cases")
+table(municipalities$country)
+devtools::use_data(municipalities, overwrite = TRUE)
+
+# no longer need units (all units are now "cases")
+zika$unit <- NULL
+
+# location seems to be in "country-locationA-locationB" format
+zika <- zika %>%
+  tidyr::separate(
+    location,
+    into = c('country', 'locationA', 'locationB'),
+    sep = '-', fill = 'right', remove = FALSE
+  )
+```
+
+## Geo-locate locations
+
+Note this takes a while to run, and should be done by hand (for now, at least)
+
+```{r, eval = FALSE}
+load_all()
+data(zika)
+locations <- unique(zika[c("location", "locationA", "locationB", "country")])
+#tryCatch(load("../data/latLonDat.rda"), error = function(e) invisible())
+#newLocations <- setdiff(locations, unique(latLonDat$location))
+#if (length(newLocations)) {
+urls <- sprintf(
+  "http://maps.googleapis.com/maps/api/geocode/json?address=%s&components=country:%s",
+  gsub("_", "+", with(locations, paste(locationA, locationB, sep = "+"))), 
+  gsub("_", "+", locations$country)
+)
+json <- lapply(urls, function(x) jsonlite::fromJSON(x)$results)
+
+latLons <- Map(function(x, y) {
+  # location can be a multiple row data frame!
+  latlon <- x[["geometry"]][["location"]][1, ]
+  latlon$status <- x[["status"]]
+  latlon$location <- y
+  latlon
+}, json, locations$location)
+
+latLonDat <- unique(dplyr::bind_rows(latLons))
+#}
+
+# there are some bad locations...
+latLonDat %>% filter(is.na(lat))
+#>   lat lng                  location
+#> 1  NA  NA                     Norte
+#> 2  NA  NA                  Nordeste
+#> 3  NA  NA                   Sudeste
+#> 4  NA  NA                       Sul
+#> 5  NA  NA              Centro-Oeste
+#> 6  NA  NA Ecuador-Manabi-Rocafuerte
+#> 7  NA  NA         Panama_Importados
+
+latLonDat <- latLonDat %>% filter(!is.na(lat))
+devtools::use_data(latLonDat, overwrite = TRUE)
+```
+
+
+## Attempt to make sense of field codes
+
+```{r}
+# most location types are at the municipality level...
+table(zika$location_type)
+# because...Colombia!!
+table(zika$location_type, zika$country)
+
+# try to infer the disease type reported
+is_type <- function(x, type = "zika") {
+  as.numeric(grepl(type, x))
+}
+
+zika <- zika %>%
+  mutate_(
+    # remove redundant "zika" references in data field
+    #data_field = ~sub("[_]?[Z-z]ika[_]?", "", data_field),
+    # replace columbian codes with something meaningful
+    data_field = ~recode("CO0001" = "confirmed_laboratory", data_field),
+    data_field = ~recode("CO0002" = "confirmed_clinic", data_field),
+    data_field = ~recode("CO0003" = "suspected", data_field),
+    data_field = ~recode("CO0004" = "suspected_clinic", data_field),
+    confirmed = ~ifelse(grepl("confirmed", data_field, ignore.case = T), "confirmed", "not confirmed")
+    #gbs = ~is_type(data_field, "gbs"),
+    #flavi = ~is_type(data_field, "flavi"),
+    #arbovirus = ~is_type(data_field, "arbovirus"),
+    #microcephaly = ~is_type(data_field, "microcephaly"),
+    #zika = ~is_type(data_field, "zika")
+  )
+
+devtools::use_data(zika, overwrite = TRUE)
+```
+
+## Filter to the most granular location type within country
+
+Should we automatically show most granular location type when conditioned on a country?
+
+```{r}
+top_locations <- zika %>% 
+  group_by(country, location_type) %>% 
+  summarise(n = max(length(unique(locationA)), length(unique(locationB)))) %>% 
+  slice(which.max(n))
+semi_join(zika, top_locations)
+```
+
+
+## Data field guides
+
+```{r}
+guideFiles <- Sys.glob("*/*[G-g]uide*")
+countries <- dirname(guideFiles)
+guides <- lapply(guideFiles, function(x) read_csv(x))
+guides <- Map(function(x, y) { x$country <- y; x}, guides, countries)
+dataGuide <- bind_rows(guides)
+
+
+# many countries have redundant counts reported on different levels
+# for example,
+zika %>%
+  filter(country == "Brazil") %>%
+  group_by(location_type, data_field) %>%
+  summarise(n = sum(value))
+
+#>       location_type                        data_field       n
+#>          <chr>                                   <chr>   <dbl>
+#> 1       country                          zika_reported 1091664
+#> 2        region                          zika_reported 1091664
+#> 3         state                 microcephaly_confirmed      NA
+#> 4         state           microcephaly_fatal_confirmed      NA
+#> 5         state                 microcephaly_fatal_not      NA
+#> 6         state microcephaly_fatal_under_investigation      NA
+#> 7         state                       microcephaly_not      NA
+#> 8         state       microcephaly_under_investigation      NA
+#> 9         state                          zika_reported 1091664
+
+zika %>%
+  filter(country == "United_States") %>%
+  group_by(location_type, data_field) %>%
+  summarise(n = sum(value))
+
+
+# We'll focus just on the country level for now
+
+library(tidyr)
+# filter
+dataGuide %>%
+  filter(country == "Ecuador" &
+           data_field %in% c("total_zika_confirmed_cumulative",
+                             "total_zika_confirmed_pregnant",
+                             ""
+           ))
+
+```

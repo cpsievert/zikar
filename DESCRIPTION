@@ -1,9 +1,18 @@
 Package: zikar
-Title: What the Package Does (one line, title case)
+Title: Tools for exploring publicly available Zika data
 Version: 0.0.0.9000
-Authors@R: Carson Sievert <cpsievert1@gmail.com> [aut, cre]
-Description: What the package does (one paragraph).
-Depends: R (>= 3.3.1)
-License: file LICENSE
+Authors@R: person("Carson", "Sievert", role = c("aut", "cre"),
+    email = "cpsievert1@gmail.com")
+Description: Tools for exploring publicly available Zika data
+Depends:
+    R (>= 3.3.1)
+Imports:
+    shiny,
+    leaflet,
+    plotly (> 4.0.0),
+    dplyr,
+    broom
+License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
+RoxygenNote: 5.0.1
