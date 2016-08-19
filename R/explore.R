@@ -18,6 +18,8 @@ explore <- function() {
     # column to track selections
     dplyr::mutate(region = "All Regions")
 
+  zSD <- SharedData$new(z, ~location)
+
   varsToShow <- c("location", "report_date", "value", "report_type")
   txt <- Reduce(paste, lapply(z[varsToShow], function(x) paste(x, "<br />")))
 
@@ -28,8 +30,9 @@ explore <- function() {
     do(value = c(0, diff(.$value))) %>%
     unnest() %>%
     mutate(report_date = z$report_date) %>%
-    mutate(txt = txt) %>%
     ungroup() %>% left_join(z)
+
+  zDiffSD <- SharedData$new(zDiff, ~location)
 
   countries <- unique(zDiff$country)
   countriesInSubplot <- setdiff(countries, "Colombia")
@@ -45,10 +48,11 @@ explore <- function() {
         checkboxInput("cumulative", "Show cumulative counts", value = TRUE),
         tabsetPanel(
           tabPanel(
-            "Time Series", plotlyOutput("timeSeries", height = 1000)
+            "Time Series", plotlyOutput("timeSeries", height = 1000), value = "all"
           ),
-          tabPanel("Colombia", plotlyOutput("colombia")),
-          tabPanel("Densities", plotlyOutput("densities"))
+          tabPanel("Colombia", plotlyOutput("colombia"), value = "colombia"),
+          tabPanel("Densities", plotlyOutput("densities")),
+          id = "tabset"
         ))
     )
   )
@@ -67,21 +71,23 @@ explore <- function() {
 
     getZikaData <- reactive({
       need(input$cumulative, "Choose cumulative value")
-      if (identical(input$cumulative, FALSE)) zDiff else z
+      if (identical(input$cumulative, FALSE)) zDiffSD else zSD
     })
 
     output$timeSeries <- renderPlotly({
+      # make sure we're showing a "global" map view
+      res <- fitMapBounds()
+
       # modify attachKey to respect crosstalk
       #googleSearch()
       base <- getZikaData() %>%
-        SharedData$new(~location) %>%
-        plot_ly(x = ~report_date, y = ~value, text = ~txt, color = ~report_type) %>%
+        plot_ly(x = ~report_date, y = ~value, color = ~report_type, text = ~location) %>%
         group_by(location)
 
       plots <- lapply(countriesInSubplot, function(cntry) {
         base %>%
           filter(country %in% cntry) %>%
-          add_trace(hoverinfo = "text", marker = list(size = 6), mode = "markers+lines") %>%
+          add_trace(hoverinfo = "x+y+text+name", marker = list(size = 6), mode = "markers+lines") %>%
           layout(
             xaxis = list(title = ""),
             yaxis = list(
@@ -91,9 +97,8 @@ explore <- function() {
             )
           )
       })
-
       subplot(plots, nrows = length(plots), shareX = TRUE, titleY = TRUE) %>%
-        crosstalk("plotly_hover", "plotly_unhover") %>%
+        crosstalk("plotly_hover", "plotly_deselect") %>%
         layout(dragmode = "zoom")
     })
 
@@ -113,9 +118,34 @@ explore <- function() {
       if (is.null(id)) {
         return(NULL)
       }
-      getZikaData() %>% filter(location %in% id) %>% mutate(region = id)
+      getZikaData()$origData() %>% filter(location %in% id) %>% mutate(region = id)
     })
 
+    fitMapBounds <- reactive({
+      d <- if (identical(input$tabset, "colombia")) {
+        filter(z, country %in% "Colombia")
+      } else {
+        filter(z, !country %in% "Colombia")
+      }
+      latRng <- range(d$lat)
+      lngRng <- range(d$lng)
+      leafletProxy("map", session) %>%
+        fitBounds(lngRng[1], latRng[1], lngRng[2], latRng[2])
+    })
+
+    output$colombia <- renderPlotly({
+      res <- fitMapBounds()
+
+      getZikaData()$origData() %>%
+        filter(country %in% "Colombia") %>%
+        group_by(location) %>%
+        plot_ly(x = ~report_date, y = ~value, text = ~txt, alpha = 0.3) %>%
+        add_trace(hoverinfo = "text", color = ~report_type,
+                  marker = list(size = 6), mode = "markers+lines") %>%
+        toWebGL()
+    })
+
+    # reactive that returns the zika data which is within the map bounds
     mapZoomData <- reactive({
       bounds <- input$map_bounds
       if (is.null(bounds)) {
@@ -127,23 +157,14 @@ explore <- function() {
       if (all(idx)) {
         return(NULL)
       }
-      getZikaData() %>% filter(idx) %>% mutate(region = "Inside Map")
+      getZikaData()$origData() %>% filter(idx) %>% mutate(region = "Inside Map")
     })
 
     retrieveSelection <- reactive({
       zoomSelection <- mapZoomData()
       clickSelection <- mapClickData()
-      rbind(getZikaData(), zoomSelection, clickSelection)
-    })
-
-    output$colombia <- renderPlotly({
-      getZikaData() %>%
-        filter(country %in% "Colombia") %>%
-        group_by(location) %>%
-        plot_ly(x = ~report_date, y = ~value, text = ~txt, alpha = 0.3) %>%
-        add_trace(hoverinfo = "text", color = ~report_type,
-                  marker = list(size = 6), mode = "markers+lines") %>%
-        toWebGL()
+      d <- getZikaData()$origData()
+      rbind(d, zoomSelection, clickSelection)
     })
 
     output$densities <- renderPlotly({
@@ -160,10 +181,10 @@ explore <- function() {
 
       data %>%
         group_by(report_type, region) %>%
-        do(n = NROW(.), d = density(.$value, adjust = 3, n = 32)) %>%
+        do(n = NROW(.), d = density(log(.$value), adjust = 3, n = 32)) %>%
         tidy(d) %>%
         ungroup() %>%
-        filter(y > 10^-3) %>%
+        #filter(y > 10^-3) %>%
         group_by(report_type) %>%
         do(p = plot_area(.)) %>%
         .[["p"]] %>%
