@@ -11,7 +11,7 @@
 
 <meta name="author" content="Carson Sievert" />
 
-<meta name="date" content="2016-08-17" />
+<meta name="date" content="2016-08-18" />
 
 <title>Acquiring and cleaning zika data</title>
 
@@ -119,7 +119,7 @@ $(document).ready(function () {
 
 <h1 class="title toc-ignore">Acquiring and cleaning zika data</h1>
 <h4 class="author"><em>Carson Sievert</em></h4>
-<h4 class="date"><em>2016-08-17</em></h4>
+<h4 class="date"><em>2016-08-18</em></h4>
 
 </div>
 
@@ -141,14 +141,15 @@ zikaRepo
 <div id="read-in-the-most-recent-data" class="section level2">
 <h2>Read in the most recent data</h2>
 <pre class="r"><code>library(readr)
-library(dplyr)
 dataFiles &lt;- Sys.glob(&quot;zika/*/*/data/*.csv&quot;)
 countries &lt;- unlist(lapply(strsplit(dataFiles, &quot;/&quot;), &quot;[[&quot;, 1))
 dats &lt;- lapply(dataFiles, function(x) read_csv(x))</code></pre>
 </div>
 <div id="fix-some-inconsistencies" class="section level2">
 <h2>Fix some inconsistencies</h2>
-<pre class="r"><code># Panama dates are reported as M/D/Y
+<pre class="r"><code>library(dplyr)
+library(tidyr)
+# Panama dates are reported as M/D/Y
 idx &lt;- grep(&quot;^Panama&quot;, dataFiles)
 dats[idx] &lt;- lapply(dats[idx], function(x) {
   x$report_date &lt;- lubridate::mdy(x$report_date)
@@ -208,9 +209,38 @@ zika &lt;- zika %&gt;%
     into = c('country', 'locationA', 'locationB'),
     sep = '-', fill = 'right', remove = FALSE
   )</code></pre>
+<p>The script in “code/Plot_cases_by_country/Plot_all.R” uses this table to essentially perform a semi_join on the data, filtering out weird data_field codes and redundant location types.</p>
+<pre class="r"><code>meta &lt;- read_csv(&quot;zika/code/Plot_cases_by_country/country_variable_selection.csv&quot;)
+names(meta) &lt;- sub(&quot;country_name&quot;, &quot;country&quot;, names(meta))
+names(meta) &lt;- sub(&quot;location_filter&quot;, &quot;location_type&quot;, names(meta))
+meta &lt;- meta %&gt;% 
+  transform(confirmed_codes = strsplit(confirmed_codes, &quot;,&quot;)) %&gt;%
+  unnest() %&gt;%
+  transform(suspected_codes = strsplit(suspected_codes, &quot;,&quot;)) %&gt;%
+  unnest() %&gt;%
+  transform(location_type = strsplit(location_type, &quot;,&quot;)) %&gt;%
+  unnest() %&gt;%
+  gather(report_type, data_field_code, confirmed_codes, suspected_codes) %&gt;%
+  mutate(report_type = sub(&quot;_codes&quot;, &quot;&quot;, report_type)) %&gt;%
+  unique()
+
+vars &lt;- c(&quot;country&quot;, &quot;data_field_code&quot;, &quot;location_type&quot;)
+
+
+zika &lt;- zika %&gt;% 
+  semi_join(meta, by = vars) %&gt;% 
+  left_join(meta, by = vars) %&gt;% 
+  select(-file) %&gt;%
+  group_by(location, country, report_date, report_type) %&gt;%
+  summarise(value = sum(value)) %&gt;%
+  arrange(location, report_type, report_date) %&gt;%
+  ungroup()
+
+devtools::use_data(zika, overwrite = TRUE)</code></pre>
 </div>
 <div id="geo-locate-locations" class="section level2">
 <h2>Geo-locate locations</h2>
+<p>Note this takes a while to run, and should be done by hand (for now, at least)</p>
 <pre class="r"><code>load_all()
 data(zika)
 locations &lt;- unique(zika[c(&quot;location&quot;, &quot;locationA&quot;, &quot;locationB&quot;, &quot;country&quot;)])
@@ -251,63 +281,11 @@ devtools::use_data(latLonDat, overwrite = TRUE)</code></pre>
 </div>
 <div id="attempt-to-make-sense-of-field-codes" class="section level2">
 <h2>Attempt to make sense of field codes</h2>
+<p>Note: most of this code was done before I discovered the work under code</p>
 <pre class="r"><code># most location types are at the municipality level...
 table(zika$location_type)
-#&gt; 
-#&gt;         city      country       county   department     district 
-#&gt;           15         1430         3673          695           33 
-#&gt; municipality     province       region        state    territory 
-#&gt;       105639        11214           40         9057          914
 # because...Colombia!!
 table(zika$location_type, zika$country)
-#&gt;               
-#&gt;                Argentina Brazil Centro Colombia Dominican_Republic Ecuador
-#&gt;   city                 0      0      0        0                  0       0
-#&gt;   country              0      8      0        0                306     295
-#&gt;   county               0      0      0        0                  0     545
-#&gt;   department           0      0      0        0                  0       0
-#&gt;   district             0      0      0        0                  0       0
-#&gt;   municipality         0      0      0   104025                279       0
-#&gt;   province          2016      0      0        0               8701     223
-#&gt;   region               0      0      8        0                  0       0
-#&gt;   state                0   3990      0        0                  0       0
-#&gt;   territory            0      0      0        0                  0       0
-#&gt;               
-#&gt;                El_Salvador Guatemala  Haiti Mexico Nicaragua Nordeste
-#&gt;   city                   0         0      0      0        15        0
-#&gt;   country              305        67      1      0       118        0
-#&gt;   county                 0         0      0      0         0        0
-#&gt;   department           695         0      0      0         0        0
-#&gt;   district               0         0      0      0         7        0
-#&gt;   municipality           0      1290     31      0        14        0
-#&gt;   province               0         0     20      0         0        0
-#&gt;   region                 0         0      0      0         0        8
-#&gt;   state                  0         0      0   3456         0        0
-#&gt;   territory              0         0      0      0         0        0
-#&gt;               
-#&gt;                 Norte Panama Panama_Importados Puerto_Rico Sudeste    Sul
-#&gt;   city              0      0                 0           0       0      0
-#&gt;   country           0    330                 0           0       0      0
-#&gt;   county            0   1988                 0           0       0      0
-#&gt;   department        0      0                 0           0       0      0
-#&gt;   district          0     26                 0           0       0      0
-#&gt;   municipality      0      0                 0           0       0      0
-#&gt;   province          0    242                12           0       0      0
-#&gt;   region            8      0                 0           0       8      8
-#&gt;   state             0      0                 0           0       0      0
-#&gt;   territory         0      0                 0         299       0      0
-#&gt;               
-#&gt;                United_States United_States_Virgin_Islands
-#&gt;   city                     0                            0
-#&gt;   country                  0                            0
-#&gt;   county                1020                          120
-#&gt;   department               0                            0
-#&gt;   district                 0                            0
-#&gt;   municipality             0                            0
-#&gt;   province                 0                            0
-#&gt;   region                   0                            0
-#&gt;   state                 1611                            0
-#&gt;   territory              118                          497
 
 # try to infer the disease type reported
 is_type &lt;- function(x, type = &quot;zika&quot;) {
@@ -335,31 +313,16 @@ devtools::use_data(zika, overwrite = TRUE)</code></pre>
 </div>
 <div id="filter-to-the-most-granular-location-type-within-country" class="section level2">
 <h2>Filter to the most granular location type within country</h2>
-<p>Should we automatically show most granular location type when conditioned on a country?</p>
+<p>Should we automatically show most granular location type when conditioned on a country? (update: for now we’re going to use the location types specified in the “zika/code/Plot_cases_by_country/country_variable_selection.csv” file)</p>
 <pre class="r"><code>top_locations &lt;- zika %&gt;% 
   group_by(country, location_type) %&gt;% 
   summarise(n = max(length(unique(locationA)), length(unique(locationB)))) %&gt;% 
   slice(which.max(n))
-semi_join(zika, top_locations)
-#&gt; # A tibble: 128,243 x 10
-#&gt;    report_date               location   country    locationA locationB
-#&gt;         &lt;date&gt;                  &lt;chr&gt;     &lt;chr&gt;        &lt;chr&gt;     &lt;chr&gt;
-#&gt; 1   2016-03-19 Argentina-Buenos_Aires Argentina Buenos_Aires      &lt;NA&gt;
-#&gt; 2   2016-03-19 Argentina-Buenos_Aires Argentina Buenos_Aires      &lt;NA&gt;
-#&gt; 3   2016-03-19 Argentina-Buenos_Aires Argentina Buenos_Aires      &lt;NA&gt;
-#&gt; 4   2016-03-19 Argentina-Buenos_Aires Argentina Buenos_Aires      &lt;NA&gt;
-#&gt; 5   2016-03-19 Argentina-Buenos_Aires Argentina Buenos_Aires      &lt;NA&gt;
-#&gt; 6   2016-03-19 Argentina-Buenos_Aires Argentina Buenos_Aires      &lt;NA&gt;
-#&gt; 7   2016-03-19         Argentina-CABA Argentina         CABA      &lt;NA&gt;
-#&gt; 8   2016-03-19         Argentina-CABA Argentina         CABA      &lt;NA&gt;
-#&gt; 9   2016-03-19         Argentina-CABA Argentina         CABA      &lt;NA&gt;
-#&gt; 10  2016-03-19         Argentina-CABA Argentina         CABA      &lt;NA&gt;
-#&gt; # ... with 128,233 more rows, and 5 more variables: location_type &lt;chr&gt;,
-#&gt; #   data_field &lt;chr&gt;, data_field_code &lt;chr&gt;, value &lt;dbl&gt;, confirmed &lt;chr&gt;</code></pre>
+semi_join(zika, top_locations)</code></pre>
 </div>
 <div id="data-field-guides" class="section level2">
 <h2>Data field guides</h2>
-<pre class="r"><code>guideFiles &lt;- Sys.glob(&quot;*/*[G-g]uide*&quot;)
+<pre class="r"><code>guideFiles &lt;- Sys.glob(&quot;zika/*/*[G-g]uide*&quot;)
 countries &lt;- dirname(guideFiles)
 guides &lt;- lapply(guideFiles, function(x) read_csv(x))
 guides &lt;- Map(function(x, y) { x$country &lt;- y; x}, guides, countries)
@@ -372,19 +335,6 @@ zika %&gt;%
   filter(country == &quot;Brazil&quot;) %&gt;%
   group_by(location_type, data_field) %&gt;%
   summarise(n = sum(value))
-#&gt; Source: local data frame [8 x 3]
-#&gt; Groups: location_type [?]
-#&gt; 
-#&gt;   location_type                             data_field       n
-#&gt;           &lt;chr&gt;                                  &lt;chr&gt;   &lt;dbl&gt;
-#&gt; 1       country                          zika_reported 1091664
-#&gt; 2         state                 microcephaly_confirmed      NA
-#&gt; 3         state           microcephaly_fatal_confirmed      NA
-#&gt; 4         state                 microcephaly_fatal_not      NA
-#&gt; 5         state microcephaly_fatal_under_investigation      NA
-#&gt; 6         state                       microcephaly_not      NA
-#&gt; 7         state       microcephaly_under_investigation      NA
-#&gt; 8         state                          zika_reported 1091664
 
 #&gt;       location_type                        data_field       n
 #&gt;          &lt;chr&gt;                                   &lt;chr&gt;   &lt;dbl&gt;
@@ -402,22 +352,11 @@ zika %&gt;%
   filter(country == &quot;United_States&quot;) %&gt;%
   group_by(location_type, data_field) %&gt;%
   summarise(n = sum(value))
-#&gt; Source: local data frame [6 x 3]
-#&gt; Groups: location_type [?]
-#&gt; 
-#&gt;   location_type                   data_field     n
-#&gt;           &lt;chr&gt;                        &lt;chr&gt; &lt;dbl&gt;
-#&gt; 1        county yearly_reported_travel_cases   722
-#&gt; 2         state yearly_reported_travel_cases   724
-#&gt; 3         state          zika_reported_local     0
-#&gt; 4         state         zika_reported_travel 11528
-#&gt; 5     territory          zika_reported_local 22144
-#&gt; 6     territory         zika_reported_travel    96
 
 
 # We'll focus just on the country level for now
 
-library(tidyr)
+
 # filter
 dataGuide %&gt;%
   filter(country == &quot;Ecuador&quot; &amp;
@@ -425,7 +364,7 @@ dataGuide %&gt;%
                              &quot;total_zika_confirmed_pregnant&quot;,
                              &quot;&quot;
            ))
-#&gt; # A tibble: 0 x 0</code></pre>
+</code></pre>
 </div>
 
 

@@ -4,7 +4,7 @@
 \alias{add_summary}
 \title{Plot a running 5 number summary of zika data}
 \usage{
-add_summary(p, pattern = NULL, color = "black")
+add_summary(p, data = NULL, color = "black")
 }
 \arguments{
 \item{p}{a plotly visualization}
@@ -18,8 +18,10 @@ Plot a running 5 number summary of zika data
 }
 \examples{
 
+brazil <- dplyr::filter(zika, country == "Brazil")
+
 plot_ly(zika, x = ~report_date) \%>\%
   add_summary() \%>\%
-  add_summary("^Brazil", "red")
+  add_summary(data = brazil, "red")
 }
 

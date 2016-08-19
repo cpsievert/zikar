@@ -11,8 +11,11 @@ Imports:
     leaflet,
     plotly (> 4.0.0),
     dplyr,
+    tidyr,
     broom
 License: MIT + file LICENSE
 Encoding: UTF-8
 LazyData: true
 RoxygenNote: 5.0.1
+Remotes:
+  rstudio/crosstalk

@@ -33,7 +33,6 @@ zikaRepo
 
 ```{r}
 library(readr)
-library(dplyr)
 dataFiles <- Sys.glob("zika/*/*/data/*.csv")
 countries <- unlist(lapply(strsplit(dataFiles, "/"), "[[", 1))
 dats <- lapply(dataFiles, function(x) read_csv(x))
@@ -42,6 +41,8 @@ dats <- lapply(dataFiles, function(x) read_csv(x))
 ## Fix some inconsistencies
 
 ```{r}
+library(dplyr)
+library(tidyr)
 # Panama dates are reported as M/D/Y
 idx <- grep("^Panama", dataFiles)
 dats[idx] <- lapply(dats[idx], function(x) {
@@ -101,6 +102,38 @@ zika <- zika %>%
   )
 ```
 
+The script in "code/Plot_cases_by_country/Plot_all.R" uses this table to essentially perform a semi_join on the data, filtering out weird data_field codes and redundant location types.
+
+```{r}
+meta <- read_csv("zika/code/Plot_cases_by_country/country_variable_selection.csv")
+names(meta) <- sub("country_name", "country", names(meta))
+names(meta) <- sub("location_filter", "location_type", names(meta))
+meta <- meta %>% 
+  transform(confirmed_codes = strsplit(confirmed_codes, ",")) %>%
+  unnest() %>%
+  transform(suspected_codes = strsplit(suspected_codes, ",")) %>%
+  unnest() %>%
+  transform(location_type = strsplit(location_type, ",")) %>%
+  unnest() %>%
+  gather(report_type, data_field_code, confirmed_codes, suspected_codes) %>%
+  mutate(report_type = sub("_codes", "", report_type)) %>%
+  unique()
+
+vars <- c("country", "data_field_code", "location_type")
+
+
+zika <- zika %>% 
+  semi_join(meta, by = vars) %>% 
+  left_join(meta, by = vars) %>% 
+  select(-file) %>%
+  group_by(location, country, report_date, report_type) %>%
+  summarise(value = sum(value)) %>%
+  arrange(location, report_type, report_date) %>%
+  ungroup()
+
+devtools::use_data(zika, overwrite = TRUE)
+```
+
 ## Geo-locate locations
 
 Note this takes a while to run, and should be done by hand (for now, at least)
@@ -148,7 +181,9 @@ devtools::use_data(latLonDat, overwrite = TRUE)
 
 ## Attempt to make sense of field codes
 
-```{r}
+Note: most of this code was done before I discovered the work under code
+
+```{r, eval = FALSE}
 # most location types are at the municipality level...
 table(zika$location_type)
 # because...Colombia!!
@@ -181,9 +216,9 @@ devtools::use_data(zika, overwrite = TRUE)
 
 ## Filter to the most granular location type within country
 
-Should we automatically show most granular location type when conditioned on a country?
+Should we automatically show most granular location type when conditioned on a country? (update: for now we're going to use the location types specified in the "zika/code/Plot_cases_by_country/country_variable_selection.csv" file)
 
-```{r}
+```{r, eval = FALSE}
 top_locations <- zika %>% 
   group_by(country, location_type) %>% 
   summarise(n = max(length(unique(locationA)), length(unique(locationB)))) %>% 
@@ -194,8 +229,8 @@ semi_join(zika, top_locations)
 
 ## Data field guides
 
-```{r}
-guideFiles <- Sys.glob("*/*[G-g]uide*")
+```{r, eval = FALSE}
+guideFiles <- Sys.glob("zika/*/*[G-g]uide*")
 countries <- dirname(guideFiles)
 guides <- lapply(guideFiles, function(x) read_csv(x))
 guides <- Map(function(x, y) { x$country <- y; x}, guides, countries)
@@ -229,7 +264,7 @@ zika %>%
 
 # We'll focus just on the country level for now
 
-library(tidyr)
+
 # filter
 dataGuide %>%
   filter(country == "Ecuador" &

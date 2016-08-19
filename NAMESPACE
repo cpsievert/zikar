@@ -2,7 +2,10 @@
 
 export(add_summary)
 export(explore)
+import(broom)
+import(crosstalk)
 import(dplyr)
 import(leaflet)
 import(plotly)
 import(shiny)
+import(tidyr)
