@@ -5,11 +5,11 @@ Authors@R: person("Carson", "Sievert", role = c("aut", "cre"),
     email = "cpsievert1@gmail.com")
 Description: Tools for exploring publicly available Zika data
 Depends:
-    R (>= 3.3.1)
+    R (>= 3.3.1),
+    plotly (> 4.0.0)
 Imports:
     shiny,
     leaflet,
-    plotly (> 4.0.0),
     dplyr,
     tidyr,
     broom
