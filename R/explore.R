@@ -35,17 +35,21 @@ explore <- function() {
   countriesInSubplot <- setdiff(countries, "Colombia")
 
   ui <- fluidPage(
-    leafletOutput("map"),
     fluidRow(
-      column(2, checkboxInput("cumulative", "Show cumulative counts", value = TRUE)),
-      column(10, tabsetPanel(
-        tabPanel(
-          "Time Series",
-          plotlyOutput("timeSeries", height = 1000)
-        ),
-        tabPanel("Colombia", plotlyOutput("colombia")),
-        tabPanel("Densities", plotlyOutput("densities"))
-      ))
+      column(
+        5,
+        leafletOutput("map", height = 600)
+      ),
+      column(
+        7,
+        checkboxInput("cumulative", "Show cumulative counts", value = TRUE),
+        tabsetPanel(
+          tabPanel(
+            "Time Series", plotlyOutput("timeSeries", height = 1000)
+          ),
+          tabPanel("Colombia", plotlyOutput("colombia")),
+          tabPanel("Densities", plotlyOutput("densities"))
+        ))
     )
   )
 
@@ -80,12 +84,16 @@ explore <- function() {
           add_trace(hoverinfo = "text", marker = list(size = 6), mode = "markers+lines") %>%
           layout(
             xaxis = list(title = ""),
-            yaxis = list(title = cntry, titlefont = list(size = 8))
+            yaxis = list(
+              title = cntry,
+              titlefont = list(size = 14),
+              tickfont = list(size = 12)
+            )
           )
       })
 
       subplot(plots, nrows = length(plots), shareX = TRUE, titleY = TRUE) %>%
-        crosstalk("plotly_hover", "plotly_doubleclick") %>%
+        crosstalk("plotly_hover", "plotly_unhover") %>%
         layout(dragmode = "zoom")
     })
 
