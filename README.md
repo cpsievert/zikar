@@ -1,7 +1,7 @@
 # zikar
 
 An R package for exploring publicly available Zika data. 
-Currently it provides easy access to data in [this repository](https://github.com/cdcepi/zika).
+Currently, it provides easy access to data in [this repository](https://github.com/cdcepi/zika), and a shiny app to explore it.
 
 ## Installation
 
@@ -39,4 +39,8 @@ zika
 ## # ... with 67,723 more rows
 ```
 
-You can explore that data with `explore()`, which will open a shiny app.
+By calling `explore()`, a shiny app for exploring this data is invoked. 
+
+<a href="http://imgur.com/9MyCfkw">
+  <img src="http://i.imgur.com/9MyCfkw.gif" title="source: imgur.com" />
+</a>
