@@ -34,7 +34,7 @@ explore <- function() {
   locations <- unique(z[["location"]])
 
   # coloring palette for report types
-  pal <- c(confirmed = "#832424FF", suspected = "#005800FF")
+  pal <- c(confirmed = "#e41a1c", suspected = "#377eb8")
 
   ui <- fluidPage(
     fluidRow(
