@@ -6,7 +6,7 @@ Authors@R: person("Carson", "Sievert", role = c("aut", "cre"),
 Description: Tools for exploring publicly available Zika data
 Depends:
     R (>= 3.3.1),
-    plotly (> 4.0.0)
+    plotly (>= 4.3.0)
 Imports:
     shiny,
     leaflet,

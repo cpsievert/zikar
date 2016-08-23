@@ -20,22 +20,21 @@ explore <- function() {
 
   zSD <- SharedData$new(z, ~location)
 
-  varsToShow <- c("location", "report_date", "value", "report_type")
-  txt <- Reduce(paste, lapply(z[varsToShow], function(x) paste(x, "<br />")))
-
-  z <- z %>% mutate(txt = txt)
-
   zDiff <- z %>%
     group_by(location, country, region, report_type) %>%
     do(value = c(0, diff(.$value))) %>%
     unnest() %>%
     mutate(report_date = z$report_date) %>%
-    ungroup() %>% left_join(z)
+    ungroup()
 
   zDiffSD <- SharedData$new(zDiff, ~location)
 
-  countries <- unique(zDiff$country)
+  countries <- unique(z[["country"]])
   countriesInSubplot <- setdiff(countries, "Colombia")
+  locations <- unique(z[["location"]])
+
+  # coloring palette for report types
+  pal <- c(confirmed = "#832424FF", suspected = "#005800FF")
 
   ui <- fluidPage(
     fluidRow(
@@ -75,19 +74,22 @@ explore <- function() {
     })
 
     output$timeSeries <- renderPlotly({
-      # make sure we're showing a "global" map view
-      res <- fitMapBounds()
+      # update map & possibly prompt google search on click
+      res <- fitMapToLocation()
+      googleSearch()
 
-      # modify attachKey to respect crosstalk
-      #googleSearch()
+
       base <- getZikaData() %>%
-        plot_ly(x = ~report_date, y = ~value, color = ~report_type, text = ~location) %>%
+        plot_ly(x = ~report_date, y = ~value, color = ~report_type,
+                colors = pal, alpha = 0.5, text = ~location,
+                source = "timeSeriesSubplot") %>%
         group_by(location)
 
       plots <- lapply(countriesInSubplot, function(cntry) {
         base %>%
           filter(country %in% cntry) %>%
-          add_trace(hoverinfo = "x+y+text+name", marker = list(size = 6), mode = "markers+lines") %>%
+          add_trace(type = "scatter", mode = "markers+lines",
+                    hoverinfo = "x+y+text+name", marker = list(size = 6)) %>%
           layout(
             xaxis = list(title = ""),
             yaxis = list(
@@ -98,13 +100,13 @@ explore <- function() {
           )
       })
       subplot(plots, nrows = length(plots), shareX = TRUE, titleY = TRUE) %>%
-        crosstalk("plotly_hover", "plotly_deselect") %>%
+        crosstalk("plotly_hover") %>%
         layout(dragmode = "zoom")
     })
 
     # open a google search on click
     googleSearch <- reactive({
-      d <- event_data("plotly_click")
+      d <- event_data("plotly_click", "timeSeriesSubplot")
       if (isTRUE(d$key %in% unique(zika$location))) {
         browseURL(sprintf("http://google.com/#q=%s", d$key))
       }
@@ -121,11 +123,16 @@ explore <- function() {
       getZikaData()$origData() %>% filter(location %in% id) %>% mutate(region = id)
     })
 
-    fitMapBounds <- reactive({
+    fitMapToLocation <- reactive({
       d <- if (identical(input$tabset, "colombia")) {
         filter(z, country %in% "Colombia")
-      } else {
+      } else if (identical(input$tabset, "timeSeriesSubplot")) {
         filter(z, !country %in% "Colombia")
+      }
+      # if we click on a location's time-series, zoom to that location
+      eventData <- event_data("plotly_click", "timeSeriesSubplot")
+      if (isTRUE(eventData$key %in% locations)) {
+        d <- filter(d, location %in% eventData$key)
       }
       latRng <- range(d$lat)
       lngRng <- range(d$lng)
@@ -134,13 +141,13 @@ explore <- function() {
     })
 
     output$colombia <- renderPlotly({
-      res <- fitMapBounds()
+      res <- fitMapToLocation()
 
       getZikaData()$origData() %>%
         filter(country %in% "Colombia") %>%
         group_by(location) %>%
-        plot_ly(x = ~report_date, y = ~value, text = ~txt, alpha = 0.3) %>%
-        add_trace(hoverinfo = "text", color = ~report_type,
+        plot_ly(x = ~report_date, y = ~value, alpha = 0.3) %>%
+        add_trace(hoverinfo = "text", color = ~report_type, colors = pal,
                   marker = list(size = 6), mode = "markers+lines") %>%
         toWebGL()
     })
@@ -170,9 +177,8 @@ explore <- function() {
     output$densities <- renderPlotly({
 
       plot_area <- function(.) {
-        # TODO: this needs to be fixed in plotly!
-        cols <- if (length(unique(.$region)) > 1)  c("black", "green", "red") else "black"
-        plot_ly(., x = ~x, ymax = ~y, color = ~region, colors = cols) %>%
+        pal <- c(`All Regions` = "black", `Inside Map` = "red")
+        plot_ly(., x = ~x, ymax = ~y, color = ~region, colors = pal) %>%
           add_area(alpha = 0.3) %>%
           layout(yaxis = list(title = ~unique(report_type)))
       }
