@@ -18,5 +18,5 @@ Encoding: UTF-8
 LazyData: true
 RoxygenNote: 5.0.1
 Remotes:
-  rstudio/crosstalk
+  rstudio/crosstalk,
   jcheng5/plotly@joe/feature/crosstalk
