@@ -50,8 +50,9 @@ explore <- function() {
             "Time Series", plotlyOutput("timeSeries", height = 1000), value = "all"
           ),
           tabPanel("Colombia", plotlyOutput("colombia"), value = "colombia"),
-          tabPanel("Densities", plotlyOutput("densities")),
-          id = "tabset"
+          tabPanel("Zoom", plotlyOutput("Zoom", height = 600), value = "density"),
+          id = "tabset",
+          selected = "density"
         ))
     )
   )
@@ -174,10 +175,11 @@ explore <- function() {
       rbind(d, zoomSelection, clickSelection)
     })
 
-    output$densities <- renderPlotly({
+    output$Zoom <- renderPlotly({
+
+      pal <- c(`All Regions` = "black", `Inside Map` = "red")
 
       plot_area <- function(.) {
-        pal <- c(`All Regions` = "black", `Inside Map` = "red")
         plot_ly(., x = ~x, ymax = ~y, color = ~region, colors = pal) %>%
           add_area(alpha = 0.3) %>%
           layout(yaxis = list(title = ~unique(report_type)))
@@ -185,7 +187,7 @@ explore <- function() {
 
       data <- retrieveSelection()
 
-      data %>%
+      s <- data %>%
         group_by(report_type, region) %>%
         do(n = NROW(.), d = density(log(.$value), adjust = 3, n = 32)) %>%
         tidy(d) %>%
@@ -194,8 +196,20 @@ explore <- function() {
         group_by(report_type) %>%
         do(p = plot_area(.)) %>%
         .[["p"]] %>%
-        subplot(nrows = 2, shareX = TRUE, titleY = TRUE) %>%
-        layout(xaxis = list(title = "log(number of cases per week)"))
+        subplot(nrows = 2, shareX = TRUE, titleX = TRUE, titleY = TRUE) %>%
+        layout(xaxis = list(title = "log(Number of cases)"))
+
+      medians <- data %>%
+        group_by(report_date, region) %>%
+        summarise(m = median(value, na.rm = TRUE)) %>%
+        ungroup()
+
+      p <- plot_ly(medians, x = ~report_date, y = ~m,
+                   color = ~region, colors = pal) %>%
+        add_lines() %>%
+        layout(yaxis = list(title = "Median number of incidents"), xaxis = list(title = ""))
+
+      subplot(s, p, nrows = 2, margin = 0.05, titleX = TRUE, titleY = TRUE)
 
     })
 
