@@ -147,8 +147,10 @@ explore <- function() {
       getZikaData()$origData() %>%
         filter(country %in% "Colombia") %>%
         group_by(location) %>%
-        plot_ly(x = ~report_date, y = ~value, alpha = 0.3) %>%
-        add_trace(hoverinfo = "text", color = ~report_type, colors = pal,
+        plot_ly(x = ~report_date, y = ~value,
+                text = ~sub("Colombia-", "", location),
+                hoverinfo = "text", alpha = 0.3) %>%
+        add_trace(color = ~report_type, colors = pal, type = "scatter",
                   marker = list(size = 6), mode = "markers+lines") %>%
         toWebGL()
     })
@@ -188,6 +190,7 @@ explore <- function() {
       data <- retrieveSelection()
 
       s <- data %>%
+        filter(value > 0) %>%
         group_by(report_type, region) %>%
         do(n = NROW(.), d = density(log(.$value), adjust = 3, n = 32)) %>%
         tidy(d) %>%
@@ -198,7 +201,9 @@ explore <- function() {
         .[["p"]] %>%
         subplot(nrows = 2, shareX = TRUE, titleX = TRUE, titleY = TRUE) %>%
         layout(
-          xaxis = list(type = "log", title = "Number of cases")
+          xaxis = list(
+            type = "log", title = "Number of cases", range = c(-1.1, 5)
+          )
         )
 
       medians <- data %>%
