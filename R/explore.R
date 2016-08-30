@@ -180,7 +180,7 @@ explore <- function() {
       pal <- c(`All Regions` = "black", `Inside Map` = "red")
 
       plot_area <- function(.) {
-        plot_ly(., x = ~x, ymax = ~y, color = ~region, colors = pal) %>%
+        plot_ly(., x = ~exp(x), ymax = ~y, color = ~region, colors = pal) %>%
           add_area(alpha = 0.3) %>%
           layout(yaxis = list(title = ~unique(report_type)))
       }
@@ -197,7 +197,9 @@ explore <- function() {
         do(p = plot_area(.)) %>%
         .[["p"]] %>%
         subplot(nrows = 2, shareX = TRUE, titleX = TRUE, titleY = TRUE) %>%
-        layout(xaxis = list(title = "log(Number of cases)"))
+        layout(
+          xaxis = list(type = "log", title = "Number of cases")
+        )
 
       medians <- data %>%
         group_by(report_date, region) %>%
@@ -207,9 +209,13 @@ explore <- function() {
       p <- plot_ly(medians, x = ~report_date, y = ~m,
                    color = ~region, colors = pal) %>%
         add_lines() %>%
-        layout(yaxis = list(title = "Median number of incidents"), xaxis = list(title = ""))
+        layout(
+          yaxis = list(title = "Median number of incidents"),
+          xaxis = list(title = "")
+        )
 
-      subplot(s, p, nrows = 2, margin = 0.05, titleX = TRUE, titleY = TRUE)
+      subplot(s, p, nrows = 2, margin = 0.05, titleX = TRUE, titleY = TRUE) %>%
+        layout(showlegend = FALSE)
 
     })
 
