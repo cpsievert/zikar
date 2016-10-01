@@ -40,7 +40,7 @@ ggplot_values <- function(cntry = "United_States", type = "state") {
     scale_x_date(date_breaks = "1 month", date_labels = "%B") +
     facet_wrap(~location_type, ncol = 1, scales = "free_y") +
     labs(x = NULL, y = "Number of Cases Reported")
-  crosstalk(ggplotly(p, crosstalkOpts = o), "plotly_hover", "plotly_doubleclick")
+  highlight(ggplotly(p, crosstalkOpts = o), "plotly_hover", "plotly_doubleclick")
 }
 ggplot_values(type = c("state", "territory"))
 
@@ -60,7 +60,7 @@ plot_values <- function(cntry = "United_States", type = "state") {
       )
   })
   subplot(plots, nrows = length(plots), shareX = TRUE) %>%
-    crosstalk("plotly_hover", "plotly_doubleclick")
+    highlight("plotly_hover", "plotly_doubleclick")
 }
 plot_values(type = c("state", "territory"))
 plot_values("Brazil", "state")

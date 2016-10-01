@@ -101,7 +101,7 @@ explore <- function() {
           )
       })
       subplot(plots, nrows = length(plots), shareX = TRUE, titleY = TRUE) %>%
-        crosstalk("plotly_hover") %>%
+        highlight("plotly_hover") %>%
         layout(dragmode = "zoom")
     })
 
