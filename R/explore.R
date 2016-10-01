@@ -44,7 +44,7 @@ explore <- function() {
       ),
       column(
         7,
-        checkboxInput("cumulative", "Show cumulative counts", value = TRUE),
+        checkboxInput("cumulative", "Show cumulative counts", value = FALSE),
         tabsetPanel(
           tabPanel(
             "Time Series", plotlyOutput("timeSeries", height = 1000), value = "all"
