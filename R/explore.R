@@ -182,8 +182,8 @@ explore <- function() {
       pal <- c(`All Regions` = "black", `Inside Map` = "red")
 
       plot_area <- function(.) {
-        plot_ly(., x = ~exp(x), ymax = ~y, color = ~region, colors = pal) %>%
-          add_area(alpha = 0.3) %>%
+        plot_ly(., x = ~exp(x), y = ~y, color = ~region, colors = pal) %>%
+          add_lines(alpha = 0.3, fill = "tozeroy") %>%
           layout(yaxis = list(title = ~unique(report_type)))
       }
 
