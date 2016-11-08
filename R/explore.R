@@ -18,7 +18,7 @@ explore <- function() {
     # column to track selections
     dplyr::mutate(region = "All Regions")
 
-  zSD <- SharedData$new(z, ~location)
+  zSD <- SharedData$new(z, ~location, group = "A")
 
   zDiff <- z %>%
     group_by(location, country, region, report_type) %>%
@@ -27,7 +27,7 @@ explore <- function() {
     mutate(report_date = z$report_date) %>%
     ungroup()
 
-  zDiffSD <- SharedData$new(zDiff, ~location)
+  zDiffSD <- SharedData$new(zDiff, ~location, group = "A")
 
   countries <- unique(z[["country"]])
   countriesInSubplot <- setdiff(countries, "Colombia")
@@ -60,7 +60,8 @@ explore <- function() {
   server <- function(input, output, session, ...) {
 
     output$map <- renderLeaflet({
-      leaflet(latLonDat) %>%
+      latLonDat2 <- dplyr::semi_join(latLonDat, zika, by = "location")
+      leaflet(latLonDat2) %>%
         addTiles() %>%
         fitBounds(~min(lng), ~min(lat), ~max(lng), ~max(lat)) %>%
         addCircleMarkers(
@@ -127,7 +128,7 @@ explore <- function() {
     fitMapToLocation <- reactive({
       d <- if (identical(input$tabset, "colombia")) {
         filter(z, country %in% "Colombia")
-      } else if (identical(input$tabset, "timeSeriesSubplot")) {
+      } else if (identical(input$tabset, "all")) {
         filter(z, !country %in% "Colombia")
       }
       # if we click on a location's time-series, zoom to that location
