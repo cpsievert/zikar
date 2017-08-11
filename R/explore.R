@@ -23,9 +23,9 @@ explore <- function() {
   zDiff <- z %>%
     group_by(location, country, region, report_type) %>%
     do(value = c(0, diff(.$value))) %>%
+    ungroup() %>%
     unnest() %>%
-    mutate(report_date = z$report_date) %>%
-    ungroup()
+    mutate(report_date = z$report_date)
 
   zDiffSD <- SharedData$new(zDiff, ~location, group = "A")
 
@@ -39,20 +39,20 @@ explore <- function() {
   ui <- fluidPage(
     fluidRow(
       column(
-        5,
+        4,
         leafletOutput("map", height = 600)
       ),
       column(
-        7,
+        8,
         checkboxInput("cumulative", "Show cumulative counts", value = FALSE),
         tabsetPanel(
           tabPanel(
-            "Time Series", plotlyOutput("timeSeries", height = 1000), value = "all"
+            "Time Series", plotlyOutput("timeSeries", height = 650), value = "all"
           ),
           tabPanel("Colombia", plotlyOutput("colombia"), value = "colombia"),
           tabPanel("Zoom", plotlyOutput("Zoom", height = 600), value = "density"),
           id = "tabset",
-          selected = "density"
+          selected = "all"
         ))
     )
   )
@@ -78,7 +78,7 @@ explore <- function() {
     output$timeSeries <- renderPlotly({
       # update map & possibly prompt google search on click
       res <- fitMapToLocation()
-      googleSearch()
+      #googleSearch()
 
 
       base <- getZikaData() %>%
@@ -101,9 +101,9 @@ explore <- function() {
             )
           )
       })
-      subplot(plots, nrows = length(plots), shareX = TRUE, titleY = TRUE) %>%
+      subplot(plots, nrows = 5, shareX = TRUE, titleY = TRUE, margin = 0.03) %>%
         highlight("plotly_hover") %>%
-        layout(dragmode = "zoom")
+        layout(dragmode = "zoom", margin = list(t = 50))
     })
 
     # open a google search on click
@@ -148,12 +148,15 @@ explore <- function() {
       getZikaData()$origData() %>%
         filter(country %in% "Colombia") %>%
         group_by(location) %>%
+        SharedData$new(~location) %>%
         plot_ly(x = ~report_date, y = ~value,
                 text = ~sub("Colombia-", "", location),
                 hoverinfo = "text", alpha = 0.3) %>%
         add_trace(color = ~report_type, colors = pal, type = "scatter",
                   marker = list(size = 6), mode = "markers+lines") %>%
-        toWebGL()
+        layout(xaxis = list(title = ""), yaxis = list(title = "")) %>%
+        toWebGL() %>%
+        highlight("plotly_click", persistent = TRUE)
     })
 
     # reactive that returns the zika data which is within the map bounds
